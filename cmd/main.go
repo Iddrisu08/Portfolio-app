@@ -1,6 +1,7 @@
 package main
 
 import (
+    "io"
     "log"
     "net/http"
 
@@ -16,11 +17,28 @@ func main() {
     }
 
     // Serve static files from the embedded file system
-    http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(statikFS)))
+    http.Handle("/static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        log.Printf("Serving static file: %s", r.URL.Path)
+        http.FileServer(statikFS).ServeHTTP(w, r)
+    })))
 
     // Default route for the home page
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        http.ServeFile(w, r, "internal/templates/home.html")
+        f, err := statikFS.Open("/templates/home.html")
+        if err != nil {
+            log.Printf("Error loading home page: %v", err)
+            http.Error(w, "Error loading home page", http.StatusInternalServerError)
+            return
+        }
+        defer f.Close()
+
+        log.Println("Serving home page")
+
+        // Stream the file content to the response writer
+        _, err = io.Copy(w, f)
+        if err != nil {
+            log.Printf("Error serving home page: %v", err)
+        }
     })
 
     // Start the HTTP server
@@ -30,5 +48,7 @@ func main() {
         log.Fatalf("Server failed to start: %v", err)
     }
 }
+
+
 
 
